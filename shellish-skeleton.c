@@ -306,6 +306,36 @@ int prompt(struct command_t *command) {
   return SUCCESS;
 }
 
+
+char *find_path(char *command) {
+  int i;
+  char path_copy[1024];
+  char full_path[1024];
+  char *dir;
+
+  // get PATH 
+  char *path_env = getenv("PATH");
+  if (path_env == NULL)
+    return NULL;
+  strcpy(path_copy, path_env);
+
+  // try each folder
+  dir = strtok(path_copy, ":"); //splitting 
+  while (dir != NULL) {
+    strcpy(full_path, dir);
+    strcat(full_path, "/");
+    strcat(full_path, command);
+
+    //  exist?
+    if (access(full_path, X_OK) == 0)
+      return strdup(full_path);
+
+    dir = strtok(NULL, ":");
+  }
+
+  return NULL;
+}
+
 int process_command(struct command_t *command) {
   int r;
   if (strcmp(command->name, "") == 0)
@@ -336,9 +366,17 @@ int process_command(struct command_t *command) {
 
     // TODO: do your own exec with path resolving using execv()
     // do so by replacing the execvp call below
-    execvp(command->name, command->args); // exec+args+path
-    printf("-%s: %s: command not found\n", sysname, command->name);
-    exit(127);
+    //execvp(command->name, command->args); // exec+args+path 
+    // need to find where is the location of the command->name 
+    //then pass it to execv first parameter 
+    
+     char *path = find_path(command->name);
+     execv(path, command->args)
+     if (path == NULL) {
+      printf("-%s: %s: command not found\n", sysname, command->name);
+      exit(127);
+    }
+
   } else {
     // TODO: implement background processes here
        if (command->background) {
