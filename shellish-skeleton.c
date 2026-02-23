@@ -16,7 +16,7 @@ enum return_codes {
 
 struct command_t {
   char *name;
-  bool background;
+  bool background;  // this shows if the command should run in background or not ...boolean
   bool auto_complete;
   int arg_count;
   char **args;
@@ -101,7 +101,7 @@ int parse_command(char *buf, struct command_t *command) {
 
   if (len > 0 && buf[len - 1] == '?') // auto-complete
     command->auto_complete = true;
-  if (len > 0 && buf[len - 1] == '&') // background
+  if (len > 0 && buf[len - 1] == '&') // background  ...if it ends with & then its a background process
     command->background = true;
 
   char *pch = strtok(buf, splitters);
@@ -299,7 +299,7 @@ int prompt(struct command_t *command) {
 
   parse_command(buf, command);
 
-  // print_command(command); // DEBUG: uncomment for debugging
+  print_command(command); // DEBUG: uncomment for debugging
 
   // restore the old settings
   tcsetattr(STDIN_FILENO, TCSANOW, &backup_termios);
@@ -341,7 +341,11 @@ int process_command(struct command_t *command) {
     exit(127);
   } else {
     // TODO: implement background processes here
-    wait(0); // wait for child process to finish
+       if (command->background) {
+	       printf("[%d]\n",pid); //print pid like in a normal shell terminal and keep going
+       } else{
+	       waitpid(pid, NULL, 0)
+       } // wait for child if its not a background process
     return SUCCESS;
   }
 }
