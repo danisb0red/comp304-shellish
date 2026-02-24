@@ -401,6 +401,28 @@ int process_command(struct command_t *command) {
       exit(127);
     }
 
+
+    ////////  trying to implement CUT !!!
+     /// assuming i have the string as a single line ... called line_str
+    /// and i have the delimiter as delimtemp 
+    /// and i have field indices as an array 
+    /// now write code to do the cut command thingy
+    char *sepstr = strtok(line_str, delimtemp); 
+    count = 0;
+    while (sepstr != NULL) {
+        tokens[count++] = sepstr;
+        sepstr = strtok(NULL, delimtemp);     
+    }
+    int total = count;
+    for (int i = 0; i < numfields; i++) {
+      int index = fields[i] - 1; 
+      if (index < total) {
+          printf("%s", tokens[index]);
+          if (i != numfields - 1)
+              printf("%c", delimtemp[0]);
+      }
+  }
+  printf("\n");
   } else {
     // TODO: implement background processes here
        if (command->background) {
