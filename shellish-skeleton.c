@@ -223,11 +223,11 @@ void prompt_backspace() {
  */
 int prompt(struct command_t *command) {
   int index = 0;
-  char c;
+  int c;
   char buf[4096];
   static char oldbuf[4096];
 
-  // tcgetattr gets the parameters of the current terminal
+  // tcgetattr gets the pagitrameters of the current terminal
   // STDIN_FILENO will tell tcgetattr that it should write the settings
   // of stdin to oldt
   static struct termios backup_termios, new_termios;
@@ -247,6 +247,11 @@ int prompt(struct command_t *command) {
   while (1) {
     c = getchar();
     // printf("Keycode: %u\n", c); // DEBUG: uncomment for debugging
+     if (c == EOF) {
+    tcsetattr(STDIN_FILENO, TCSANOW, &backup_termios);
+    return EXIT;
+  }
+  
 
     if (c == 9) // handle tab
     {
@@ -314,6 +319,13 @@ char *find_path(char *command) {
   char full_path[1024];
   char *dir;
 
+   for (i = 0; command[i] != '\0'; i++) {
+    if (command[i] == '/') {
+      if (access(command, X_OK) == 0)
+        return strdup(command);
+      return NULL;
+    }
+  }
   // get PATH 
   char *path_env = getenv("PATH");
   if (path_env == NULL)
@@ -353,6 +365,75 @@ int process_command(struct command_t *command) {
       return SUCCESS;
     }
   }
+  if (strcmp(command->name, "cut") == 0) {
+  char delimiter = '\t';          
+  int fields[100];    //store field indices for fields that should be cut          
+  int numfields = 0;  // this will hav num of field thst should be cut
+   for (int i = 1; i < command->arg_count - 1; i++) {
+    if (strcmp(command->args[i], "-d") == 0 ) {
+      if (command->args[i + 1] != NULL) {   //cehck if a delim was given
+        delimiter = command->args[i + 1][0];  
+        i++;  
+      }
+      // TODO: handle the full form of -d like delim and field no ?
+       }
+        else if (strncmp(command->args[i], "-d", 2) == 0 && strlen(command->args[i]) > 2) {
+      delimiter = command->args[i][2];
+    }
+    else if (strcmp(command->args[i], "-f") == 0) {
+      if (command->args[i + 1] != NULL) {
+        char fieldscopy[256];
+        strcpy(fieldscopy, command->args[i + 1]);
+        
+        char *token = strtok(fieldscopy, ",");
+        while (token != NULL && numfields < 100) {
+          fields[numfields++] = atoi(token);  // convert str to int
+          token = strtok(NULL, ",");
+        }
+        i++; 
+      }
+    }
+     else if (strncmp(command->args[i], "-f", 2) == 0 && strlen(command->args[i]) > 2) {
+      char fieldscopy[256];
+      strcpy(fieldscopy, command->args[i] + 2);  // skip "-f"
+      char *token = strtok(fieldscopy, ",");
+      while (token != NULL && numfields < 100) {
+        fields[numfields++] = atoi(token);
+        token = strtok(NULL, ",");
+      }
+    }
+  }
+   char line[4096];
+  char delim_str[2] = {delimiter, '\0'};  // strtok needs a string
+
+  while (fgets(line, sizeof(line), stdin) != NULL) {
+    line[strcspn(line, "\n")] = '\0';
+
+    char *tokens[100];
+    int count = 0;
+    
+    char linecopy[4096];
+    strcpy(linecopy, line); 
+    
+    char *tok = strtok(linecopy, delim_str);
+    while (tok != NULL) {
+      tokens[count++] = tok;
+      tok = strtok(NULL, delim_str);
+    }
+    for (int i = 0; i < numfields; i++) {
+      int index = fields[i] - 1;  
+      if (index >= 0 && index < count) {
+        printf("%s", tokens[index]);
+        if (i != numfields - 1) {
+          printf("%c", delimiter);  // delimiter between fields
+        }
+      }
+    }
+    printf("\n");  // newline after each line
+  }
+
+  return SUCCESS;
+}
 
   pid_t pid = fork();
   if (pid == 0) // child
@@ -373,18 +454,18 @@ int process_command(struct command_t *command) {
      if (command->redirects[0] != NULL) {
       int fd = open(command->redirects[0],O_RDONLY);
       if (fd<0) {
-        printf("Error opening file.")
+        printf("Error opening file.");
       }
-      dup2(fd,0)
-      close(fd)
+      dup2(fd,0);
+      close(fd);
      }
      if (command->redirects[1] != NULL) {
       int fd = open(command->redirects[1],O_WRONLY | O_CREAT | O_TRUNC, 0644);
       if (fd<0) {
-        printf("Error opening file.")
+        printf("Error opening file.");
       }
-      dup2(fd,1)
-      close(fd)
+      dup2(fd,1);
+      close(fd);
      }
     if (command->redirects[2] != NULL) {
       int fd = open(command->redirects[2], O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -395,11 +476,14 @@ int process_command(struct command_t *command) {
     close(fd);
   }
      char *path = find_path(command->name);
-     execv(path, command->args)
+     
      if (path == NULL) {
       printf("-%s: %s: command not found\n", sysname, command->name);
       exit(127);
     }
+    execv(path, command->args);
+      printf("-%s: %s: %s\n", sysname, command->name, strerror(errno));
+      exit(127);
 
 
     ////////  trying to implement CUT !!!
@@ -407,28 +491,28 @@ int process_command(struct command_t *command) {
     /// and i have the delimiter as delimtemp 
     /// and i have field indices as an array 
     /// now write code to do the cut command thingy
-    char *sepstr = strtok(line_str, delimtemp); 
-    count = 0;
-    while (sepstr != NULL) {
-        tokens[count++] = sepstr;
-        sepstr = strtok(NULL, delimtemp);     
-    }
-    int total = count;
-    for (int i = 0; i < numfields; i++) {
-      int index = fields[i] - 1; 
-      if (index < total) {
-          printf("%s", tokens[index]);
-          if (i != numfields - 1)
-              printf("%c", delimtemp[0]);
-      }
-  }
+ //   char *sepstr = strtok(line_str, delimtemp); 
+   // count = 0;
+   // while (sepstr != NULL) {
+   //     tokens[count++] = sepstr;
+ //       sepstr = strtok(NULL, delimtemp);     
+   // }
+   // int total = count;
+    //for (int i = 0; i < numfields; i++) {
+    //  int index = fields[i] - 1; 
+     // if (index < total) {
+       //   printf("%s", tokens[index]);
+         // if (i != numfields - 1)
+           //   printf("%c", delimtemp[0]);
+    //  }
+ // }
   printf("\n");
   } else {
     // TODO: implement background processes here
        if (command->background) {
 	       printf("[%d]\n",pid); //print pid like in a normal shell terminal and keep going
        } else{
-	       waitpid(pid, NULL, 0)
+	       waitpid(pid, NULL, 0);
        } // wait for child if its not a background process
     return SUCCESS;
   }
