@@ -7,6 +7,7 @@
 #include <termios.h> // termios, TCSANOW, ECHO, ICANON
 #include <unistd.h>
 #include <fcntl.h> 
+#include <dirent.h> 
 const char *sysname = "shellish";
 
 enum return_codes {
@@ -371,7 +372,7 @@ int process_command(struct command_t *command) {
   int numfields = 0;  // this will hav num of field thst should be cut
    for (int i = 1; i < command->arg_count - 1; i++) {
     if (strcmp(command->args[i], "-d") == 0 ) {
-      if (command->args[i + 1] != NULL) {   //cehck if a delim was given
+      if (command->args[i + 1] != NULL) {   //check if a delim was given
         delimiter = command->args[i + 1][0];  
         i++;  
       }
@@ -429,12 +430,85 @@ int process_command(struct command_t *command) {
         }
       }
     }
-    printf("\n");  // newline after each line
+    printf("\n");  
   }
 
   return SUCCESS;
 }
 
+
+/// idea for chatrooom
+/// check if room exists..if it doesnt create a folder/directory
+/// check if user exists....if not then create a named text file (pipe)
+/// two cases : 1) send message -> wrtie to all files in the room
+///              2) read message -> read from the user file 
+
+ if (strcmp(command->name, "chatroom") == 0) {  //first arg is roomname and second is username
+  char* roomname = command->args[1];
+  char* username = command->args[2];
+  char roompath[1024];
+  snprintf(roompath, sizeof(roompath), "/tmp/chatroom-%s", roomname);
+    if (access(roompath, F_OK) == -1) {
+        mkdir(roompath, 0755); // create room directory if not exists
+    }
+    
+    char userpipe[1024];
+    snprintf(userpipe,sizeof(userpipe), "/tmp/chatroom-%s/%s", roomname, username);
+    if (access(userpipe, F_OK) == -1) {
+        mkfifo(userpipe, 0777); }
+        // Case 2: read messages
+        pid_t pid = fork();
+        if (pid == 0) { // child process for reading 
+            char readbuf[1024];
+            while (1) { //infinite loop ...!! Process keeps running always
+                int fd = open(userpipe, O_RDONLY);
+                if (fd < 0) {
+                    printf("Error opening user pipe for reading.\n");
+                    exit(1); }
+                int n = read(fd, readbuf, sizeof(readbuf) - 1);
+                if (n > 0) {
+                    readbuf[n] = '\0';
+                    printf("\n%s\n", readbuf); 
+                    printf("[%s] %s > ", roomname, username);
+                    fflush(stdout);
+                }
+                close(fd);
+            }
+        }
+       
+        // Case 1: send messages
+        char sendbuf[1024];
+        printf("[%s] %s > ", roomname, username);
+        fflush(stdout);
+        while (fgets(sendbuf, sizeof(sendbuf), stdin) != NULL) { 
+            sendbuf[strcspn(sendbuf, "\n")] = '\0'; // remove newline
+            char message[1100];
+            snprintf(message, sizeof(message), "[%s] %s: %s", roomname, username, sendbuf);
+            // Write message to all user pipes in the room
+            char userfile[1024];
+            DIR *d = opendir(roompath);
+            if (d) {
+                struct dirent *dir;
+                while ((dir = readdir(d)) != NULL) {
+                     // only write to named pipes
+                         if (dir->d_name[0] == '.') continue; // we skip files like . and .. cuz they are not pipes
+                         if (strcmp(dir->d_name, username) == 0) continue; // dont write to own pipe !!
+                        snprintf(userfile, sizeof(userfile), "%s/%s", roompath, dir->d_name); 
+                        int fd = open(userfile, O_WRONLY | O_NONBLOCK);
+                        if (fd >= 0) {
+                            write(fd, message, strlen(message));
+                            close(fd); }
+                     }
+                     closedir(d);
+                  }  
+            printf("[%s] %s > ", roomname, username);
+            fflush(stdout);
+        }
+       
+              return SUCCESS;
+ }
+
+ 
   pid_t pid = fork();
   if (pid == 0) // child
   {
