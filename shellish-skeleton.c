@@ -350,6 +350,10 @@ char *find_path(char *command) {
   return NULL;
 }
 
+///ls -la | grep shellax | wc need to implement this by pipinng
+/// so output of ls -la is input to grep and output of grep is input to wc
+/// 
+
 int process_command(struct command_t *command) {
   int r;
   if (strcmp(command->name, "") == 0)
@@ -520,6 +524,8 @@ int process_command(struct command_t *command) {
 
   char* role = command->args[1];
 
+  //remove these comments !!!!! TODO
+
   // what if the host can keep giving riddls so  its a fifo ..
   // need to fork so that host can keep giving riddles and players can keep playing without exiting the program
   // ok so host job is to submit the riddle and also validate the answer..so host doesnt ig send the answer in the fifo it only sends the riddle
@@ -680,6 +686,45 @@ int process_command(struct command_t *command) {
   }
 
   return SUCCESS;}
+
+  // PIPPIN CODE 
+if (command->next != NULL) {
+    int pipefd[2];
+    pipe(pipefd);  
+
+    // 2 childs...one for first comand and one for next/rest
+    pid_t pid1 = fork();
+    if (pid1 == 0) {
+        close(pipefd[0]);          
+        dup2(pipefd[1], STDOUT_FILENO);  // output of first commandis going to the pipe
+        close(pipefd[1]);
+        char *path = find_path(command->name); //find the command to call it
+        if (path == NULL) {
+            printf("-%s: %s: command not found\n", sysname, command->name);
+            exit(127);
+        }
+        execv(path, command->args); //call the command 
+        exit(127);
+    }
+
+    pid_t pid2 = fork();
+    if (pid2 == 0) {
+        close(pipefd[1]);           
+        dup2(pipefd[0], STDIN_FILENO);   // Input of second command is from output of first command
+        close(pipefd[0]);
+
+        // Recursion 
+        process_command(command->next);
+        exit(0);
+    }
+    close(pipefd[0]);
+    close(pipefd[1]);
+    waitpid(pid1, NULL, 0);
+    waitpid(pid2, NULL, 0);
+
+    return SUCCESS;
+}
+
   
 
   pid_t pid = fork();
