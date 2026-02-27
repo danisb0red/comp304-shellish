@@ -508,7 +508,180 @@ int process_command(struct command_t *command) {
               return SUCCESS;
  }
 
- 
+ /// idea fo custom command... a riddle  like chatroom
+ /// so its a game ?? where therre is one host who submits the riddle and the answer and the numb of tries
+ /// then players (multiple if i have enough time) can answer
+ /// format riddle <host/player>
+ if (strcmp(command->name, "riddle") == 0) {
+   if (command->arg_count < 2) {
+    printf("Usage: riddle <host/player>\n");
+    return SUCCESS;
+  }
+
+  char* role = command->args[1];
+
+  // what if the host can keep giving riddls so  its a fifo ..
+  // need to fork so that host can keep giving riddles and players can keep playing without exiting the program
+  // ok so host job is to submit the riddle and also validate the answer..so host doesnt ig send the answer in the fifo it only sends the riddle
+  /// ok think in file terms..
+  /// host creates a fifo file that has the riddle 
+  /// number of tris and the answer in a variable in the host process
+  /// players read from the fifo file and submit their answers in another fifo file for the host to read and validate
+  /// if the answer is correct , host process writes a message in the fifo file for the player to read and know that they won
+  /// if the answer is wrong and they have tries left , host process writes a message in
+  /// ok so in simple terms..2 fifo files
+  /// 3 cases : 1) host creates the riddle fifo
+  ///          2) player reads the riddle fifo and submits answer in answer fifo
+  ///          3) host reads the answer fifo and validates and writes result in result fifo for player to read
+
+  if (strcmp(role, "host") == 0) {
+
+    char riddlefifo[] = "/tmp/riddle_fifo";
+    char answerfifo[] = "/tmp/answer_fifo";
+    char resultfifo[] = "/tmp/result_fifo";
+
+    mkfifo(riddlefifo, 0666);
+    mkfifo(answerfifo, 0666);
+    mkfifo(resultfifo, 0666);
+
+    char riddle[1024];
+    char answer[1024];
+    int tries;
+
+    printf("Enter the riddle: ");
+    fgets(riddle, sizeof(riddle), stdin);
+    riddle[strcspn(riddle, "\n")] = '\0';
+
+    printf("Enter the answer: ");
+    fgets(answer, sizeof(answer), stdin);
+    answer[strcspn(answer, "\n")] = '\0';
+
+    printf("Enter the number of tries: ");
+    scanf("%d", &tries);
+    getchar(); 
+     printf("Riddle sent. Waiting...\n");
+    // write riddle to riddlefifo for players to read
+    int rfd = open(riddlefifo, O_WRONLY);
+    write(rfd, riddle, strlen(riddle));
+    close(rfd);
+
+   
+
+    while (tries > 0) {
+
+        char playeranswer[1024];
+
+        int afd = open(answerfifo, O_RDONLY);  
+        int n = read(afd, playeranswer, sizeof(playeranswer) - 1);
+        close(afd);
+
+        if (n > 0) {
+            playeranswer[n] = '\0';
+
+            printf("Received guess: %s\n", playeranswer);
+
+            int resfd = open(resultfifo, O_WRONLY);
+
+            if (strcmp(playeranswer, answer) == 0) {
+
+                char winmsg[1024];
+                snprintf(winmsg, sizeof(winmsg),
+                         "Correct! The answer is: %s", answer);
+
+                write(resfd, winmsg, strlen(winmsg));
+                close(resfd);
+
+                printf("Player guessed correctly. Game over.\n");
+                break;
+
+            } else {
+
+                tries--;
+
+                char wrongmsg[1024];
+
+                if (tries > 0) {
+                    snprintf(wrongmsg, sizeof(wrongmsg),
+                             "Wrong answer. Tries left: %d", tries);
+                } else {
+                    snprintf(wrongmsg, sizeof(wrongmsg),
+                             "Game over! The correct answer was: %s", answer);
+                }
+
+                write(resfd, wrongmsg, strlen(wrongmsg));
+                close(resfd);
+
+                printf("Wrong guess. Remaining tries: %d\n", tries);
+            }
+        }
+    }
+
+    unlink(riddlefifo);
+    unlink(answerfifo);
+    unlink(resultfifo);
+
+    return SUCCESS;
+
+  } else if (strcmp(role, "player") == 0) {
+
+    char riddlefifo[] = "/tmp/riddle_fifo";
+    char answerfifo[] = "/tmp/answer_fifo";
+    char resultfifo[] = "/tmp/result_fifo";
+
+    char riddle[1024];
+    char answer[1024];
+
+    int rfd = open(riddlefifo, O_RDONLY);
+    if (rfd < 0) {
+        printf("No riddle available. Error.\n");
+        return SUCCESS;
+    }
+
+    int n = read(rfd, riddle, sizeof(riddle) - 1);
+    close(rfd);
+
+    if (n > 0) {
+
+        riddle[n] = '\0';
+        printf("Riddle: %s\n", riddle);
+
+        while (1) {
+
+            printf("Your answer: ");
+            fgets(answer, sizeof(answer), stdin);
+            answer[strcspn(answer, "\n")] = '\0';
+
+            int afd = open(answerfifo, O_WRONLY);
+            write(afd, answer, strlen(answer));
+            close(afd);
+
+            char result[1024];
+
+            int resfd = open(resultfifo, O_RDONLY);
+            n = read(resfd, result, sizeof(result) - 1);
+            close(resfd);
+
+            if (n > 0) {
+                result[n] = '\0';
+                printf("%s\n", result);
+
+                if (strncmp(result, "Correct!", 8) == 0 ||
+                    strncmp(result, "Game over!", 10) == 0) {
+                    break;
+                }
+            }
+        }
+
+    } else {
+        printf("No riddle available. Error.\n");
+    }
+
+    return SUCCESS;
+  }
+
+  return SUCCESS;}
+  
+
   pid_t pid = fork();
   if (pid == 0) // child
   {
