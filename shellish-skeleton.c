@@ -375,7 +375,8 @@ int process_command(struct command_t *command) {
   int fields[100];    //store field indices for fields that should be cut          
   int numfields = 0;  // this will hav num of field thst should be cut
    for (int i = 1; i < command->arg_count - 1; i++) {
-    if (strcmp(command->args[i], "-d") == 0 ) {
+    if (strcmp(command->args[i], "-d") == 0 || 
+        strcmp(command->args[i], "--delimiter") == 0 ) {
       if (command->args[i + 1] != NULL) {   //check if a delim was given
         delimiter = command->args[i + 1][0];  
         i++;  
@@ -385,7 +386,8 @@ int process_command(struct command_t *command) {
         else if (strncmp(command->args[i], "-d", 2) == 0 && strlen(command->args[i]) > 2) {
       delimiter = command->args[i][2];
     }
-    else if (strcmp(command->args[i], "-f") == 0) {
+    else if (strcmp(command->args[i], "-f") == 0 || 
+        strcmp(command->args[i], "--fields") == 0) {
       if (command->args[i + 1] != NULL) {
         char fieldscopy[256];
         strcpy(fieldscopy, command->args[i + 1]);
